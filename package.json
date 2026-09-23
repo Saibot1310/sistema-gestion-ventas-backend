@@ -1,0 +1,11 @@
+{
+  "name": "sistema-ventas-api",
+  "version": "1.0.0",
+  "description": "Api HTTP del Sistema de Gestión de Ventas",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "license": "ISC",
+  "type": "module"
+}
