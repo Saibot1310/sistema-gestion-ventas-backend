@@ -1,6 +1,8 @@
-import express, { json } from 'express';
+import express from 'express';
 
 const app = express();
+
+app.use(express.json({ limit: '50kb' }));
 
 const productos = [
   { id: 1, nombre: 'Teclado mecánico', precio: 45.5, categoria: 'periféricos', activo: true },
@@ -8,6 +10,30 @@ const productos = [
   { id: 3, nombre: 'Monitor 24', precio: 189.99, categoria: 'monitores', activo: true },
   { id: 4, nombre: 'Silla de escritorio', precio: 210.0, categoria: 'mobiliario', activo: false },
 ];
+
+const CAMPOS_VALIDOS = ['nombre', 'precio', 'categoria', 'activo'];
+
+function errorDeCampo(campo, valor) {
+  if (campo === 'nombre') {
+    return typeof valor === 'string' && valor.trim() !== ''
+      ? null
+      : 'nombre debe ser texto no vacío';
+  }
+  if (campo === 'precio') {
+    return typeof valor === 'number' && Number.isFinite(valor) && valor > 0
+      ? null
+      : 'precio debe ser un número mayor que 0';
+  }
+  if (campo === 'categoria') {
+    return typeof valor === 'string' && valor.trim() !== ''
+      ? null
+      : 'categoria debe ser texto no vacío';
+  }
+  if (campo === 'activo') {
+    return typeof valor === 'boolean' ? null : 'activo debe ser true o false';
+  }
+  return `campo desconocido: "${campo}"`;
+}
 
 app.get('/', (req, res) => {
   res.type('text/plain').send('API del Sistema de Gestión de Ventas\nDiagnóstico: GET /health\n');
@@ -26,7 +52,7 @@ app.param('id', (req, res, next, valor) => {
   next();
 })
 
-app.get('/productos', (req, res) => {
+app.get('/products', (req, res) => {
 
   let resultado = productos;
 
@@ -80,7 +106,7 @@ app.get('/productos', (req, res) => {
   return res.json(productos);
 });
 
-app.get('/productos/:id', (req, res) => {
+app.get('/products/:id', (req, res) => {
   const producto = productos.find(producto => producto.id === req.idValidado);
 
   if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
@@ -89,16 +115,73 @@ app.get('/productos/:id', (req, res) => {
 
 });
 
-app.post('/productos', (req, res) => {
+app.post('/products', (req, res) => {
 
-  res.status(501).json({ error: 'Aún no implementado: crear productos requiere leer el body (Módulo 7)' });
+  if (typeof req.body !== 'object' || req.body === null || Array.isArray(req.body)) {
+    return res.status(400).json({ error: 'se esperaba un cuerpo JSON con los datos del producto' });
+  }
+
+  const clavesDesconocidas = Object.keys(req.body).filter(k => !CAMPOS_VALIDOS.includes(k));
+
+  if (clavesDesconocidas.length > 0) {
+    return res.status(400).json({ error: `campo(s) no reconocido(s): ${clavesDesconocidas.join(', ')}` });
+  }
+
+  for (const campo of ['nombre', 'precio', 'categoria']) {
+    const error = errorDeCampo(campo, req.body[campo]);
+    if (error) return res.status(400).json({ error: `${campo}: ${error}` });
+  }
+
+  if (req.body.activo !== undefined) {
+    const error = errorDeCampo('activo', req.body.activo);
+    if (error) return res.status(400).json({ error: `activo: ${error}` });
+  }
+
+  const nuevoId = productos.reduce((max, producto) => Math.max(max, producto.id), 0) + 1;
+  const nuevoProducto = {
+    id: nuevoId,
+    nombre: req.body.nombre.trim(),
+    precio: req.body.precio,
+    categoria: req.body.categoria.trim(),
+    activo: req.body.activo ?? true,
+  };
+
+  productos.push(nuevoProducto);
+  res.status(201).json(nuevoProducto);
+
 });
 
 app.patch('/products/:id', (req, res) => {
-  res.status(501).json({ error: 'Aún no implementado: modificar productos requiere leer el body (Módulo 7)' });
+const producto = productos.find((p) => p.id === req.idValidado);
+  if (!producto) return res.status(404).json({ error: `No existe un producto con id ${req.idValidado}` });
+
+  if (typeof req.body !== 'object' || req.body === null || Array.isArray(req.body)) {
+    return res.status(400).json({ error: 'se esperaba un cuerpo JSON con los campos a modificar' });
+  }
+
+  const claves = Object.keys(req.body);
+  if (claves.length === 0) {
+    return res.status(400).json({ error: 'no se proporcionó ningún campo para modificar' });
+  }
+
+  const clavesDesconocidas = claves.filter((k) => !CAMPOS_VALIDOS.includes(k));
+  if (clavesDesconocidas.length > 0) {
+    return res.status(400).json({ error: `campo(s) no reconocido(s): ${clavesDesconocidas.join(', ')}` });
+  }
+
+  // Ningún campo es obligatorio individualmente en PATCH; los que vengan deben ser válidos.
+  for (const campo of claves) {
+    const error = errorDeCampo(campo, req.body[campo]);
+    if (error) return res.status(400).json({ error: `${campo}: ${error}` });
+  }
+
+  for (const campo of claves) {
+    producto[campo] = typeof req.body[campo] === 'string' ? req.body[campo].trim() : req.body[campo];
+  }
+  res.json(producto);
 });
 
-app.delete('/productos/:id', (req, res) => {
+app.delete('/products/:id', (req, res) => {
   const producto = productos.find(producto => producto.id === req.idValidado);
 
   if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
