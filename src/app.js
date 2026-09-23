@@ -1,7 +1,26 @@
+import { randomUUID } from 'node:crypto';
 import express from 'express';
 
 const app = express();
 
+function asignarIdDePeticion(req, res, next) {
+  req.id = randomUUID();
+  res.set('X-Request-Id', req.id);
+  next();
+}
+
+function registrarSolicitud(req, res, next) {
+  const inicio = process.hrtime.bigint();
+  console.log(`[${req.id}] → ${req.method} ${req.originalUrl}`);
+  res.on('finish', () => {
+    const ms = Number(process.hrtime.bigint() - inicio) / 1e6;
+    console.log(`[${req.id}] ← ${res.statusCode} (${ms.toFixed(1)}ms)`);
+  });
+  next();
+}
+
+app.use(asignarIdDePeticion);
+app.use(registrarSolicitud);
 app.use(express.json({ limit: '50kb' }));
 
 const productos = [
