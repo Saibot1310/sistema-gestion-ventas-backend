@@ -17,14 +17,71 @@ app.get('/health', (req, res) => {
   res.json({ estado: 'ok' });
 });
 
+app.param('id', (req, res, next, valor) => {
+  if (!/^\d+$/.test(valor)) {
+    return res.status(400).json({ error: `id inválido: "${valor}" debe ser un entero positivo` });
+  }
+
+  req.idValidado = Number(valor);
+  next();
+})
+
 app.get('/productos', (req, res) => {
+
+  let resultado = productos;
+
+  const { categoria, activo, buscar, precioMin, precioMax, pagina, limite } = req.query;
+
+  if (categoria !== undefined) {
+    resultado = resultado.filter((p) => p.categoria === categoria);
+  }
+
+  if (activo !== undefined) {
+    if (activo !== 'true' && activo !== 'false') {
+      return res.status(400).json({ error: `activo debe ser "true" o "false", se recibió "${activo}"` });
+    }
+    resultado = resultado.filter((p) => p.activo === (activo === 'true'));
+  }
+
+  if (buscar !== undefined) {
+    const texto = buscar.toLowerCase();
+    resultado = resultado.filter((p) => p.nombre.toLowerCase().includes(texto));
+  }
+
+  if (precioMin !== undefined) {
+    const min = Number(precioMin);
+    if (Number.isNaN(min)) return res.status(400).json({ error: `precioMin inválido: "${precioMin}"` });
+    resultado = resultado.filter((p) => p.precio >= min);
+  }
+  if (precioMax !== undefined) {
+    const max = Number(precioMax);
+    if (Number.isNaN(max)) return res.status(400).json({ error: `precioMax inválido: "${precioMax}"` });
+    resultado = resultado.filter((p) => p.precio <= max);
+  }
+
+  const total = resultado.length;
+  let paginaNum = 1;
+  let limiteNum = total || 1;
+  if (pagina !== undefined || limite !== undefined) {
+    paginaNum = Number(pagina ?? 1);
+    limiteNum = Number(limite ?? 10);
+    if (!Number.isInteger(paginaNum) || paginaNum < 1) {
+      return res.status(400).json({ error: `pagina inválida: "${pagina}"` });
+    }
+    if (!Number.isInteger(limiteNum) || limiteNum < 1) {
+      return res.status(400).json({ error: `limite inválido: "${limite}"` });
+    }
+    const inicio = (paginaNum - 1) * limiteNum;
+    resultado = resultado.slice(inicio, inicio + limiteNum);
+  }
+
+  res.json({ total, pagina: paginaNum, limite: limiteNum, datos: resultado });
+
   return res.json(productos);
 });
 
 app.get('/productos/:id', (req, res) => {
-
-  const id = Number(req.params.id);
-  const producto = productos.find(producto => producto.id === id);
+  const producto = productos.find(producto => producto.id === req.idValidado);
 
   if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
 
@@ -42,10 +99,7 @@ app.patch('/products/:id', (req, res) => {
 });
 
 app.delete('/productos/:id', (req, res) => {
-
-  const id = Number(req.params.id);
-
-  const producto = productos.find(producto => producto.id === id);
+  const producto = productos.find(producto => producto.id === req.idValidado);
 
   if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
 
